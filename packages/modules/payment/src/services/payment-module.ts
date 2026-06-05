@@ -1165,15 +1165,40 @@ export default class PaymentModuleService
 
     // This can be empty when either the method is not supported or an account holder wasn't created
     if (isPresent(providerAccountHolder)) {
-      accountHolder = await this.accountHolderService_.create(
+      // The provider call above is idempotent (e.g. Stripe returns the same
+      // customer for a given idempotency key), so an account_holder row for
+      // this (provider_id, external_id) may already exist: a prior run created
+      // the row but never persisted the customer link - which is written
+      // separately, by the caller's createRemoteLinkStep - leaving an orphaned
+      // holder. The caller-side `context.account_holder` short-circuit only
+      // sees holders already linked to the customer, so it misses that orphan,
+      // and a plain insert then collides with the unique (provider_id,
+      // external_id) index ("Account holder ... already exists"), surfacing as
+      // a 400 on POST /payment-sessions that never self-heals.
+      //
+      // Reuse the existing row instead (get-or-create). The caller then
+      // re-links the returned holder via its link upsert, healing the orphan,
+      // and any later init for the same customer succeeds.
+      const [existingAccountHolder] = await this.accountHolderService_.list(
         {
-          external_id: providerAccountHolder.id,
-          email: input.context.customer?.email,
-          data: providerAccountHolder.data,
           provider_id: input.provider_id,
+          external_id: providerAccountHolder.id,
         },
+        { take: 1 },
         sharedContext
       )
+
+      accountHolder =
+        existingAccountHolder ??
+        (await this.accountHolderService_.create(
+          {
+            external_id: providerAccountHolder.id,
+            email: input.context.customer?.email,
+            data: providerAccountHolder.data,
+            provider_id: input.provider_id,
+          },
+          sharedContext
+        ))
     }
 
     return await this.baseRepository_.serialize(accountHolder)
