@@ -1365,45 +1365,6 @@ moduleIntegrationTestRunner<IPaymentModuleService>({
           })
         })
       })
-
-      describe("Account Holder", () => {
-        // pp_system_default.createAccountHolder returns { id: customer.id }, so
-        // both calls resolve to the same (provider_id, external_id) - mirroring
-        // a provider whose create is idempotent (e.g. Stripe).
-        it("reuses an existing (provider_id, external_id) holder instead of throwing 'already exists'", async () => {
-          const provider_id = "pp_system_default"
-          const customer = { id: "cus_idempotent", email: "repro@example.com" }
-
-          // The module creates the holder but does not link it to the customer
-          // (the create-payment-session workflow does that), so this leaves
-          // exactly the orphaned/unlinked row that the caller-side short-circuit
-          // misses on the next init.
-          const first = await service.createAccountHolder({
-            provider_id,
-            context: { customer },
-          })
-
-          expect(first.external_id).toBe(customer.id)
-
-          // Second init: the provider returns the same external_id. Without the
-          // lookup-before-insert this collides with the unique
-          // (provider_id, external_id) index and throws; it must reuse the row.
-          const second = await service.createAccountHolder({
-            provider_id,
-            context: { customer },
-          })
-
-          expect(second.id).toBe(first.id)
-
-          const holders = await service.listAccountHolders({
-            provider_id,
-            external_id: customer.id,
-          })
-
-          // No duplicate insert.
-          expect(holders).toHaveLength(1)
-        })
-      })
     })
   },
 })

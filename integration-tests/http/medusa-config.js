@@ -21,7 +21,18 @@ const customFulfillmentProviderCalculated = {
   id: "test-provider-calculated",
 }
 
+const customPaymentProviderAccountHolder = {
+  resolve: require("./dist/utils/providers/payment-account-holder").default,
+  id: "test",
+}
+
 const modules = {
+  [Modules.PAYMENT]: {
+    /** @type {import('@medusajs/payment').PaymentModuleOptions} */
+    options: {
+      providers: [customPaymentProviderAccountHolder],
+    },
+  },
   [Modules.FULFILLMENT]: {
     /** @type {import('@medusajs/fulfillment').FulfillmentModuleOptions} */
     options: {
